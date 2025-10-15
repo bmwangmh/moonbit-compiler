@@ -1281,7 +1281,7 @@ let rec do_convert tac (expr: Mcore.expr) =
       Vec.append tac tac_cases;
 
       (* Record the correct label order *)
-      Vec.push global_inst (ExtArray { label; values = Array.to_list correspondence; elem_size = 8 });
+      Vec.push global_inst (ExtArray { label; values = Array.to_list correspondence; elem_size = 8; has_len = false });
       rd
 
   | Cexpr_letrec _ ->
@@ -1427,7 +1427,7 @@ let rec do_convert tac (expr: Mcore.expr) =
           (* Store the correct order of jump table *)
           Vec.push tac_cases (Label out);
           Vec.push global_inst (ExtArray
-            { label = table; values = Array.to_list correspondence; elem_size = 8 });
+            { label = table; values = Array.to_list correspondence; elem_size = 8; has_len = false });
 
           (* Deduplicate possibilities and jump there *)
           let possibilities =
@@ -1487,7 +1487,7 @@ let rec do_convert tac (expr: Mcore.expr) =
 
           slot := !slot + 1;
           (* Each of them is still a single byte, since we separated strings into two bytes *)
-          Vec.push global_inst (ExtArray { label; values; elem_size = 1 });
+          Vec.push global_inst (ExtArray { label; values; elem_size = 1; has_len = true });
 
           (* Let the pointer point to beginning of data, rather than the length section *)
           let beginning = new_temp Mtype.T_bytes in
@@ -1501,7 +1501,7 @@ let rec do_convert tac (expr: Mcore.expr) =
           let values = len :: vals in
 
           slot := !slot + 1;
-          Vec.push global_inst (ExtArray { label; values; elem_size = 1 });
+          Vec.push global_inst (ExtArray { label; values; elem_size = 1; has_len = true });
 
           (* Let the pointer point to beginning of data, rather than the length section *)
           let beginning = new_temp Mtype.T_bytes in
@@ -1584,7 +1584,7 @@ let generate_vtables () =
   Hashtbl.iter (fun (ty: Mtype.t) methods ->
     let label_raw = Printf.sprintf "vtable_%s" (Mtype.to_string ty) in
     let label = remove_space label_raw in
-    Vec.push global_inst (ExtArray { label; values = Vec.to_list methods; elem_size = 8 })
+    Vec.push global_inst (ExtArray { label; values = Vec.to_list methods; elem_size = 8; has_len = false })
   ) trait_table
 
 (**

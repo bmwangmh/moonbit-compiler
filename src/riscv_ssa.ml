@@ -124,6 +124,7 @@ type extern_array = {
   label: string;
   values: string list;
   elem_size: int;
+  has_len : bool;
 }
 
 type malloc = {

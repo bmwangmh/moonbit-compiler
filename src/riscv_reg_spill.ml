@@ -319,6 +319,10 @@ let init_entryW (bl : VBlockLabel.t) (entryNextUse : int SlotMap.t) =
   let loop_pred = Vec.empty () in
   let normal_pred = Vec.empty () in
 
+  (* Printf.printf "EntryNextUse of block %s: " bl.name;
+    SlotMap.iter b_liveinfo.entryNextUse (fun var dist -> Printf.printf "(%s -> %d) " (Slot.to_string var) dist);
+    Printf.printf "\n"; *)
+
   (* 1. Compute frequency -- also check for loop edges *)
   List.iter
     (fun pred ->
@@ -448,6 +452,8 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
   let binfo = get_spillinfo bl in
   let block = VProg.get_block !vprog bl in
 
+  (* Printf.printf "\n Processing block %s\n" bl.name; *)
+
   (*1. Obtain Next-Use Distance for each instruction through nextUse parameter *)
   (*2. Initialize -- entryW/entryS *)
   let w_I, w_F = SlotSet.split_vars binfo.entryW in
@@ -456,6 +462,13 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
   let w_F = ref w_F in
   let s_I = ref s_I in
   let s_F = ref s_F in
+
+  (* Printf.printf " Work ";
+    SlotSet.iter (SlotSet.union !w_F !w_I) (fun var -> Printf.printf "%s " (Slot.to_string var));
+    
+  Printf.printf "\n Spilled ";
+    SlotSet.iter (SlotSet.union !s_F !s_I) (fun var -> Printf.printf "%s " (Slot.to_string var));
+  Printf.printf "\n"; *)
 
   (*3. Reload/Spill to be inserted before each instruction, including before Term, so it is n+1 *)
   let body_size = Vec.length block.body in
@@ -479,11 +492,27 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
     let protected = srcs in
     (* At this point, protected protects the registers being used *)
 
+    (* Printf.eprintf "sp:";
+    SlotSet.iter !spill (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\nw :";
+    SlotSet.iter !w (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\ns :";
+    SlotSet.iter !s (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\n"; *)
+
     (* a. Compute the variables that need to be reloaded *)
     SlotSet.iter !reload (fun var ->
       w := SlotSet.add !w var;
       s := SlotSet.remove !s var);
     (* Adjust the maximum number of allocatable registers *)
+
+      (* Printf.eprintf "sp:";
+    SlotSet.iter !spill (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\nw :";
+    SlotSet.iter !w (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\ns :";
+    SlotSet.iter !s (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\n"; *)
 
     (* b. Leave registers for src *)
     let _ = limit_func nextUse w s spill protected i adjust_k in
@@ -502,6 +531,15 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
     (* e. Insert reload/spill instructions *)
     SlotSet.iter !reload (fun var -> Vec.push addInsts.![i] (Inst.generate_reload var));
 
+    (* Printf.eprintf "sp:";
+    SlotSet.iter !spill (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\nw :";
+    SlotSet.iter !w (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\ns :";
+    SlotSet.iter !s (fun var -> Printf.eprintf " %s" (Slot.to_string var));
+    Printf.eprintf "\n";  
+    Printf.printf "%d\n" adjust_k; *)
+
     (* f. Insert spill instructions for spill_I *)
     SlotSet.iter !spill (fun var -> Vec.push addInsts.![i] (Inst.generate_spill var));
     ()
@@ -510,6 +548,8 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
   Vec.iteri block.body (fun i inst ->
     let srcs_I, srcs_F = SlotSet.split_vars @@ SlotSet.of_list @@ Inst.get_srcs inst in
     let dests_I, dests_F = SlotSet.split_vars @@ SlotSet.of_list @@ Inst.get_dests inst in
+
+    (* Printf.eprintf "Handling inst %d: %s\n" i (Inst.to_string inst); *)
 
     (* A. Handle integer variables *)
     let pre_k = Reg.k in
@@ -526,6 +566,8 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
   let term = block.term in
   let srcs_I, srcs_F = SlotSet.split_vars @@ SlotSet.of_list @@ Term.get_srcs term in
   let dests_I, dests_F = SlotSet.split_vars @@ SlotSet.of_list @@ Term.get_dests term in
+
+  (* Printf.printf "Handling term: %s\n" (Term.to_string term); *)
 
   (* A. Handle integer variables *)
   let pre_k = Reg.k in
@@ -550,6 +592,13 @@ let apply_min_algorithm (bl : VBlockLabel.t) (nextUse : int SlotMap.t Vec.t) =
   Vec.append block.body new_body;
   let exitW = SlotSet.union !w_I !w_F in
   let exitS = SlotSet.union !s_I !s_F in
+
+  (* Printf.printf " After processing block %s\n" bl.name;
+  Printf.printf " Work ";
+    SlotSet.iter exitW (fun var -> Printf.printf "%s " (Slot.to_string var));
+    Printf.printf "\n Spilled ";
+    SlotSet.iter exitS (fun var -> Printf.printf "%s " (Slot.to_string var));
+    Printf.printf "\n"; *)
   update_spillinfo bl { binfo with exitW; exitS };
   ()
 ;;
