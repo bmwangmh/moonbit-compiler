@@ -396,9 +396,10 @@ module Inst = struct
     | Sraiw i_slot ->
       rd i_slot.rd @ rs i_slot.rs1
     | Lb mem_slot | Lh mem_slot | Lw mem_slot | Ld mem_slot
-    | Lbu mem_slot| Lhu mem_slot
-    | Sb mem_slot | Sh mem_slot | Sw mem_slot | Sd mem_slot ->
+    | Lbu mem_slot| Lhu mem_slot ->
       rd mem_slot.rd @ rs mem_slot.base
+    | Sb mem_slot | Sh mem_slot | Sw mem_slot | Sd mem_slot ->
+      rs mem_slot.rd @ rs mem_slot.base
     | FaddD r_fslot | FsubD r_fslot | FmulD r_fslot | FdivD r_fslot ->
       rd r_fslot.frd @ rs r_fslot.frs1 @ rs r_fslot.frs2
     | FmaddD triple_fslot
@@ -649,7 +650,7 @@ module Term = struct
     | Jalr jalr_label -> [ jalr_label.rs1 ]
     | TailCall call_data -> call_data.args
     | TailCallIndirect call_indirect -> call_indirect.args
-    | Ret _ -> []
+    | Ret ret -> [ ret ]
     | J _ | Jal _ -> []
   ;;
 

@@ -1871,7 +1871,7 @@ let ssa_of_mcore (core: Mcore.t) =
 
         (* Do conversion *)
         let main_body = convert_expr lambda_removed in
-        let main_decl = FnDecl { fn = "main"; args = []; body = main_body } in
+        let main_decl = FnDecl { fn = "_main"; args = []; body = main_body } in
         main_decl :: body
       
     | None -> body
@@ -1880,11 +1880,11 @@ let ssa_of_mcore (core: Mcore.t) =
   (* Add _start *)
   let unused = new_temp Mtype.T_unit in
   Vec.append _start init_exprs;
-  Vec.push _start (Call { rd = unused; fn = "main"; args = [] });
+  Vec.push _start (Call { rd = unused; fn = "_main"; args = [] });
   Vec.push _start (Return unused);
 
   let start_body = Vec.to_list _start in
-  let with_start = FnDecl { fn = "_start"; args = []; body = start_body } :: with_main in
+  let with_start = FnDecl { fn = "main"; args = []; body = start_body } :: with_main in
 
   (* Add global declarations and variables *)
   generate_vtables ();

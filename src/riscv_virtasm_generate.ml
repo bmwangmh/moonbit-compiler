@@ -366,7 +366,7 @@ let convert_single name body terminator (inst: Riscv_ssa.t) =
       terminator := Term.Ret (slot_v ret)
 
   | Branch { cond; ifso; ifnot } ->
-      terminator := Term.Beq {
+      terminator := Term.Bne {
         rs1 = slot_v cond; rs2 = Slot.Reg Zero;
         ifso = label_of ifso;
         ifnot = label_of ifnot }

@@ -319,10 +319,6 @@ let init_entryW (bl : VBlockLabel.t) (entryNextUse : int SlotMap.t) =
   let loop_pred = Vec.empty () in
   let normal_pred = Vec.empty () in
 
-  (* Printf.printf "EntryNextUse of block %s: " bl.name;
-    SlotMap.iter b_liveinfo.entryNextUse (fun var dist -> Printf.printf "(%s -> %d) " (Slot.to_string var) dist);
-    Printf.printf "\n"; *)
-
   (* 1. Compute frequency -- also check for loop edges *)
   List.iter
     (fun pred ->
@@ -657,6 +653,14 @@ let spill_reload_func (f_label : VFuncLabel.t) (func : VFunc.t) =
 let spill_regs (vprog_in : VProg.t) (rpo_arg : RPO.t) =
   vprog := vprog_in;
   live_info := Liveness.liveness_analysis !vprog rpo_arg;
+
+  let out = Printf.sprintf "%s-livenessinfo.txt" !Driver_config.Linkcore_Opt.output_file in
+  Basic_io.write out (VBlockMap.fold !live_info "" (fun bl info acc ->
+    let entryuse_str = SlotMap.fold info.entryNextUse "" (fun var cnt acc -> acc ^ (Slot.to_string var) ^ "->" ^ (Int.to_string cnt) ^ "; ") in
+    let exituse_str = SlotMap.fold info.exitNextUse "" (fun var cnt acc -> acc ^ (Slot.to_string var) ^ "->" ^ (Int.to_string cnt) ^ "; ") in
+    acc ^ Printf.sprintf "Block %s:\n EntryNextUse: %s\n ExitNextUse: %s\n" bl.name entryuse_str entryuse_str
+  ));
+
   rpo := rpo_arg;
   VFuncMap.iter !vprog.funcs spill_reload_func;
   ()

@@ -42,6 +42,7 @@ let reg_of_string s =
   | None -> failwith ("Unknown register: " ^ s)
 
 let get_reg slot : reg =
+  if slot = Slot.Unit then 0 else
   Option.get @@ find_index_opt (fun r -> r = Slot.to_string slot) registers
 
 type imm = int64
@@ -137,10 +138,6 @@ and btype_t =
 and jtype_t = 
 | Jal
 
-and utype_t =
-| Lui
-| Auipc
-
 and t =
 | Section of string
 
@@ -151,26 +148,9 @@ and t =
 | MemType of memtype_t * reg * reg * imm
 | BType of btype_t * reg * reg * label
 | JType of jtype_t * reg * label
-| UType of utype_t * reg * imm
 
 (* Pseudo-instructions *)
 | La of reg * label
-| Lb of reg * label
-| Lh of reg * label
-| Lw of reg * label
-| Ld of reg * label
-| Sb of reg * label * reg
-| Sh of reg * label * reg
-| Sw of reg * label * reg
-| Sd of reg * label * reg
-| FLb of reg * label * reg
-| FLh of reg * label * reg
-| FLw of reg * label * reg
-| FLd of reg * label * reg
-| FSb of reg * label * reg
-| FSh of reg * label * reg
-| FSw of reg * label * reg
-| FSd of reg * label * reg
 
 | Li of reg * imm
 | Mv of reg * reg
@@ -179,12 +159,12 @@ and t =
 | Neg of reg * reg
 | Negw of reg * reg
 
-| Beqz of reg * label
+(* | Beqz of reg * label
 | Bnez of reg * label
 | Bltz of reg * label
 | Bgez of reg * label
 | Bgtz of reg * label
-| Blez of reg * label
+| Blez of reg * label *)
 
 | Call of label
 | Tail of label
@@ -193,6 +173,8 @@ and t =
 | Jalr of reg
 
 | Label of label
+| Ecall
+| Globl of label
 | Nop
 
 let rtype_to_string = function
@@ -270,22 +252,13 @@ let btype_to_string = function
 let jtype_to_string = function
   | Jal -> "jal"
 
-let utype_to_string = function
-  | Lui -> "lui"
-  | Auipc -> "auipc"
+
+let symbol_mangling = String.map (function
+  | '@' | '#' | '|' | '/' | ':' | '(' | ')' | '*' -> '_'
+  | c -> c
+)
 
 let to_string asm =
-  let convert_global rs label =
-    let rs_str = registers.(rs) in
-    Printf.sprintf "%s, %s" rs_str label
-  in
-
-  let convert_global_tmp rs label rt =
-    let rs_str = registers.(rs) in
-    let rt_str = registers.(rt) in
-    Printf.sprintf "%s, %s, %s" rs_str label rt_str
-  in
-
   match asm with
   | Section sec -> Printf.sprintf ".section .%s" sec
   | Data str -> str
@@ -304,56 +277,33 @@ let to_string asm =
       let ty_str = stype_to_string ty in
       let rs1_str = registers.(rs1) in 
       let rs2_str = registers.(rs2) in 
-      Printf.sprintf "%s %s, %Ld(%s)" ty_str rs2_str imm rs1_str
+      Printf.sprintf "%s %s, %Ld(%s)" ty_str rs1_str imm rs2_str
   | BType (ty, rs1, rs2, label) ->
       let ty_str = btype_to_string ty in
       let rs1_str = registers.(rs1) in 
       let rs2_str = registers.(rs2) in 
-      Printf.sprintf "%s %s, %s, %s" ty_str rs1_str rs2_str label
+      Printf.sprintf "%s %s, %s, %s" ty_str rs1_str rs2_str (symbol_mangling label)
   | JType (ty, rd, label) ->
       let ty_str = jtype_to_string ty in
       let rd_str = registers.(rd) in
-      Printf.sprintf "%s %s, %s" ty_str rd_str label
-  | UType (ty, rd, imm) ->
-      let ty_str = utype_to_string ty in
-      let rd_str = registers.(rd) in
-      Printf.sprintf "%s %s, %Ld" ty_str rd_str imm
-  | La (rd, label) -> Printf.sprintf "la %s" (convert_global rd label)
-  | Lb (rd, label) -> Printf.sprintf "lb %s" (convert_global rd label)
-  | Lh (rd, label) -> Printf.sprintf "lh %s" (convert_global rd label)
-  | Lw (rd, label) -> Printf.sprintf "lw %s" (convert_global rd label)
-  | Ld (rd, label) -> Printf.sprintf "ld %s" (convert_global rd label)
-  | Sb (rs2, label, rs1) -> Printf.sprintf "sb %s" (convert_global_tmp rs1 label rs2)
-  | Sh (rs2, label, rs1) -> Printf.sprintf "sh %s" (convert_global_tmp rs1 label rs2)
-  | Sw (rs2, label, rs1) -> Printf.sprintf "sw %s" (convert_global_tmp rs1 label rs2)
-  | Sd (rs2, label, rs1) -> Printf.sprintf "sd %s" (convert_global_tmp rs1 label rs2)
-  | FLb (rd, label, rs1) -> Printf.sprintf "flb %s" (convert_global_tmp rs1 label rd)
-  | FLh (rd, label, rs1) -> Printf.sprintf "flh %s" (convert_global_tmp rs1 label rd)
-  | FLw (rd, label, rs1) -> Printf.sprintf "flw %s" (convert_global_tmp rs1 label rd)
-  | FLd (rd, label, rs1) -> Printf.sprintf "fld %s" (convert_global_tmp rs1 label rd)
-  | FSb (rs2, label, rs1) -> Printf.sprintf "fsb %s" (convert_global_tmp rs1 label rs2)
-  | FSh (rs2, label, rs1) -> Printf.sprintf "fsh %s" (convert_global_tmp rs1 label rs2)
-  | FSw (rs2, label, rs1) -> Printf.sprintf "fsw %s" (convert_global_tmp rs1 label rs2)
-  | FSd (rs2, label, rs1) -> Printf.sprintf "fsd %s" (convert_global_tmp rs1 label rs2)
+      Printf.sprintf "%s %s, %s" ty_str rd_str (symbol_mangling label)
+  | La (rd, label) -> Printf.sprintf "la %s, %s" (registers.(rd)) (symbol_mangling label)
   | Li (rd, imm) -> Printf.sprintf "li %s, %Ld" (registers.(rd)) imm
   | Mv (rd, rs) -> Printf.sprintf "mv %s, %s" (registers.(rd)) (registers.(rs))
   | Not (rd, rs) -> Printf.sprintf "not %s, %s" (registers.(rd)) (registers.(rs))
   | Neg (rd, rs) -> Printf.sprintf "neg %s, %s" (registers.(rd)) (registers.(rs))
   | Negw (rd, rs) -> Printf.sprintf "negw %s, %s" (registers.(rd)) (registers.(rs))
   | Sext (rd, rs) -> Printf.sprintf "sext.w %s, %s" (registers.(rd)) (registers.(rs))
-  | Beqz (rs, label) -> Printf.sprintf "beqz %s, %s" (registers.(rs)) label
-  | Bnez (rs, label) -> Printf.sprintf "bnez %s, %s" (registers.(rs)) label
-  | Bltz (rs, label) -> Printf.sprintf "bltz %s, %s" (registers.( rs)) label
-  | Bgez (rs, label) -> Printf.sprintf "bgez %s, %s" (registers.(rs)) label
-  | Bgtz (rs, label) -> Printf.sprintf "bgtz %s, %s" (registers.(rs)) label
-  | Blez (rs, label) -> Printf.sprintf "blez %s, %s" (registers.(rs)) label
-  | Call label -> Printf.sprintf "call %s" label
-  | Tail label -> Printf.sprintf "tail %s" label
+  | Call label -> Printf.sprintf "call %s" (symbol_mangling label)
+  | Tail label -> Printf.sprintf "tail %s" (symbol_mangling label)
   | Ret -> "ret"
   | Jr rs -> Printf.sprintf "jr %s" (registers.(rs))
   | Jalr rs -> Printf.sprintf "jalr %s" (registers.(rs))
-  | Label label -> label ^ ":"
+  | Label label -> (symbol_mangling label) ^ ":"
   | Nop -> "nop"
+  | Ecall -> "ecall"
+  | Globl label -> Printf.sprintf ".globl %s" (symbol_mangling label)
+
 
 (**
 Used when emitting assembly.
@@ -362,7 +312,7 @@ We expect every non-label command to be indented by 4 spaces.
 *)
 let to_asm_string asm = 
   match asm with
-  | Label _ -> to_string asm
+  | Label _ | Globl _ -> to_string asm
   | _ -> "    " ^ to_string asm
 
 let vprog = ref VProg.empty
@@ -377,8 +327,10 @@ let convert_single (inst : Inst.t) : t list =
     RType (op, get_reg slot.rd, get_reg slot.rs1, get_reg slot.rs2) in
   let convert_itype op (slot : Slots.i_slot) =
     IType (op, get_reg slot.rd, get_reg slot.rs1, Int64.of_int slot.imm) in
-  let convert_memtype op (slot : Slots.mem_slot) =
-    MemType (op, get_reg slot.base, get_reg slot.rd, Int64.of_int slot.offset) in
+  let convert_memtype_load op (slot : Slots.mem_slot) =
+    MemType (op, get_reg slot.rd, get_reg slot.base, Int64.of_int slot.offset) in
+  let convert_memtype_store op (slot : Slots.mem_slot) =
+    MemType (op, get_reg slot.rd, get_reg slot.base, Int64.of_int slot.offset) in
   match inst with
   | Add slots -> [ convert_rtype Add slots ]
   | Addw slots -> [ convert_rtype Addw slots ]
@@ -421,16 +373,16 @@ let convert_single (inst : Inst.t) : t list =
   | Sraiw slots -> [ convert_itype Sraiw slots ]
   | Slti slots -> [ convert_itype Slti slots ]
   | Sltiw slots -> [ convert_itype Sltiw slots ]
-  | Lb slots -> [ convert_memtype Lb slots ]
-  | Lh slots -> [ convert_memtype Lh slots ]
-  | Lw slots -> [ convert_memtype Lw slots ]
-  | Ld slots -> [ convert_memtype Ld slots ]
-  | Lbu slots -> [ convert_memtype Lbu slots ]
-  | Lhu slots -> [ convert_memtype Lhu slots ]
-  | Sb slots -> [ convert_memtype Sb slots ]
-  | Sh slots -> [ convert_memtype Sh slots ]
-  | Sw slots -> [ convert_memtype Sw slots ]
-  | Sd slots -> [ convert_memtype Sd slots ]
+  | Lb slots -> [ convert_memtype_load Lb slots ]
+  | Lh slots -> [ convert_memtype_load Lh slots ]
+  | Lw slots -> [ convert_memtype_load Lw slots ]
+  | Ld slots -> [ convert_memtype_load Ld slots ]
+  | Lbu slots -> [ convert_memtype_load Lbu slots ]
+  | Lhu slots -> [ convert_memtype_load Lhu slots ]
+  | Sb slots -> [ convert_memtype_store Sb slots ]
+  | Sh slots -> [ convert_memtype_store Sh slots ]
+  | Sw slots -> [ convert_memtype_store Sw slots ]
+  | Sd slots -> [ convert_memtype_store Sd slots ]
 
   | Sextw { rd; rs } -> [ Sext (get_reg rd, get_reg rs) ]
   | Zextw { rd; rs } -> [ IType (Slli, get_reg rd, get_reg rs, 32L); IType (Srli, get_reg rd, get_reg rd, 32L) ]
@@ -440,7 +392,7 @@ let convert_single (inst : Inst.t) : t list =
       | Imm.Int64Imm i64 -> [ Li (get_reg rd, i64) ]
       | Imm.FloatImm _ -> failwith "Cannot load float immediate into integer register")
   | Mv { rd; rs } -> [ Mv (get_reg rd, get_reg rs) ]
-  | La { rd; label } -> [ La (get_reg rd, Label.to_string label) ]
+  | La { rd; label } -> [ La (get_reg rd, label.name) ]
   | Alloca { rd; size } -> 
       alloca_offset := !alloca_offset - size;
       [ IType (Addi, get_reg rd, reg_of_string "sp", Int64.of_int !alloca_offset) ]
@@ -455,7 +407,7 @@ let convert_single (inst : Inst.t) : t list =
         if i >= 8 then MemType (Sd, get_reg slot, reg_of_string "sp", Int64.of_int @@ (i - 7) * 8) 
         else Mv (reg_of_string ("a" ^ string_of_int i), get_reg slot)
       ) args in
-      arg_insts @ [ Call (Label.to_string fn);
+      arg_insts @ [ Call fn.name;
         Mv (get_reg rd, reg_of_string "a0") ]
   | CallIndirect { rd; fn; args } ->
       let arg_insts = List.mapi (fun i slot -> 
@@ -470,18 +422,18 @@ let convert_single (inst : Inst.t) : t list =
 let convert_term (gen_epilogue : Slot.t option -> t list) (stack_frame_size : int) (term : Term.t) : t list =
   match term with
   | Beq { rs1; rs2; ifso; ifnot} -> [ BType (Beq, get_reg rs1, get_reg rs2, ifso.name);
-    JType (Jal, reg_of_string "x0", ifnot.name) ]
+    JType (Jal, reg_of_string "zero", ifnot.name) ]
   | Bne { rs1; rs2; ifso; ifnot} -> [ BType (Bne, get_reg rs1, get_reg rs2, ifso.name);
-    JType (Jal, reg_of_string "x0", ifnot.name) ]
+    JType (Jal, reg_of_string "zero", ifnot.name) ]
   | Blt { rs1; rs2; ifso; ifnot} -> [ BType (Blt, get_reg rs1, get_reg rs2, ifso.name);
-    JType (Jal, reg_of_string "x0", ifnot.name) ]
+    JType (Jal, reg_of_string "zero", ifnot.name) ]
   | Bge { rs1; rs2; ifso; ifnot} -> [ BType (Bge, get_reg rs1, get_reg rs2, ifso.name);
-    JType (Jal, reg_of_string "x0", ifnot.name) ]
+    JType (Jal, reg_of_string "zero", ifnot.name) ]
   | Bltu { rs1; rs2; ifso; ifnot} -> [ BType (Bltu, get_reg rs1, get_reg rs2, ifso.name);
-    JType (Jal, reg_of_string "x0", ifnot.name) ]
+    JType (Jal, reg_of_string "zero", ifnot.name) ]
   | Bgeu { rs1; rs2; ifso; ifnot} -> [ BType (Bgeu, get_reg rs1, get_reg rs2, ifso.name);
-    JType (Jal, reg_of_string "x0", ifnot.name) ]
-  | J lable -> [ JType (Jal, reg_of_string "x0", lable.name) ]
+    JType (Jal, reg_of_string "zero", ifnot.name) ]
+  | J lable -> [ JType (Jal, reg_of_string "zero", lable.name) ]
   (* Why Jal in virtasm as only one argument?  *)
   | Jal label -> [ Call label.name ]
   | Jalr { rd; rs1; offset } -> [ MemType (Jalr, get_reg rd, get_reg rs1, Int64.of_int offset) ]
@@ -493,6 +445,7 @@ let convert_fn f_label (func : VFunc.t) : t list =
   let spilled = ref SlotSet.empty in
   let reg_used = ref SlotSet.empty in
   let max_extern_args = ref 0 in
+  let leaf_func = ref true in
 
   let stack_frame_size = List.fold_left (fun acc bl ->
     let block = VProg.get_block !vprog bl in
@@ -501,7 +454,10 @@ let convert_fn f_label (func : VFunc.t) : t list =
       let delta = match inst with
       | Inst.Spill { origin } -> spilled := SlotSet.add !spilled origin; 0
       | Inst.Alloca { size } -> size
-      | Inst.Call { args } | Inst.CallIndirect { args } -> max_extern_args := max !max_extern_args ((List.length args) - 8); 0
+      | Inst.Call { args } | Inst.CallIndirect { args } -> 
+        max_extern_args := max !max_extern_args ((List.length args) - 8);
+        leaf_func := false;
+        0
       | _ -> 0 
       in
       delta + acc
@@ -512,8 +468,10 @@ let convert_fn f_label (func : VFunc.t) : t list =
   reg_used := SlotSet.filter !reg_used (
     fun slot -> List.exists (fun reg -> match slot with | Slot.Reg slot -> slot = reg |_ -> false)
   Riscv_reg.Reg.callee_saved_regs);
+  if not !leaf_func then reg_used := SlotSet.add !reg_used (Slot.Reg Ra);
   let stack_frame_size = stack_frame_size + 8 * SlotSet.cardinal !reg_used in
   let stack_frame_size = stack_frame_size + 8 * SlotSet.cardinal !spilled in
+  let stack_frame_size = (stack_frame_size + 15) / 16 * 16 in
 
   let einfo = Riscv_reg_alloc.get_allocinfo func.entry in
   let prelude = [
@@ -536,7 +494,7 @@ let convert_fn f_label (func : VFunc.t) : t list =
   );
 
   let gen_epilogue (ret : Slot.t option) = 
-    if Option.is_some ret then [ Mv (reg_of_string "a0", get_reg @@ Option.get ret) ] else []
+    (match ret with | Some ret -> [ Mv (reg_of_string "a0", get_reg ret) ] | None -> [])
     @ List.mapi (fun i slot -> MemType (Ld, get_reg slot, reg_of_string "sp", Int64.of_int @@ stack_frame_size - (i + 1) * 8))
       (SlotSet.to_list !reg_used)
     @ [IType (Addi, reg_of_string "sp", reg_of_string "sp", Int64.of_int @@ stack_frame_size)] in
@@ -547,10 +505,13 @@ let convert_fn f_label (func : VFunc.t) : t list =
                           |> List.map convert_single
                           |> List.flatten
     in
+    let body = if bl = func.entry then prelude @ body else body in
     let term = convert_term gen_epilogue stack_frame_size block.term in
-    acc @ [Label bl.name] @ body @ term
-  ) [] rpo_func in
-  [Label func.funn.name] @ prelude @ body
+    acc @ (if bl.name = "main" then [ Globl bl.name ] else [])
+        @ [Label bl.name]
+        @ body @ term
+  ) [] (List.rev rpo_func) in
+  body
 
 let last : Imm.t ref = ref @@ Imm.IntImm 0
 
@@ -586,13 +547,13 @@ let convert_extarr (extarr : Riscv_ssa.extern_array) : t list =
     | 8 -> ".dword"
     | _ -> failwith "Unsupported extern array element size"
   in
-  len @ List.map (fun v -> Data (Printf.sprintf "%s %s" dtype v)) extarr.values
+  [Label extarr.label] @ len @ List.map (fun v -> Data (Printf.sprintf "%s %s" dtype (symbol_mangling v))) extarr.values
 
 let generate (vprog_arg : VProg.t) : t list =
   vprog := vprog_arg;
   let text_sec = VFuncMap.fold !vprog.funcs [Section "text"] (fun f_label func acc -> acc @ convert_fn f_label func) in
   let rodata_sec = VSymbolMap.fold !vprog.consts [Section "rodata"] (fun label imm acc -> acc @ convert_const label.name imm) in
-  let bss_sec = List.fold_left (fun acc (name, len) -> acc @ convert_global name len) [Section "rodata"] !vprog.globals in
+  let bss_sec = List.fold_left (fun acc (name, len) -> acc @ convert_global name len) [Section "bss"] !vprog.globals in
   let data_sec = List.fold_left (fun acc extarr -> acc @ convert_extarr extarr) [Section "data"] !vprog.extarrs in
 
-  bss_sec @ rodata_sec @ text_sec
+  data_sec @ bss_sec @ rodata_sec @ text_sec

@@ -595,5 +595,5 @@ int main(int argc, char** argv) {
     }
 
     regs["_"] = unit;
-    interpret("_start");
+    interpret("main");
 }

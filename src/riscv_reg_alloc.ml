@@ -381,7 +381,7 @@ let alloc_block (bl : VBlockLabel.t) =
   (* 3. Solve the problem of conflicts with predecessors and convert terminator *)
   solve_edge bl
 
-(* 4. Handle the problem of unprocessed successors --
+(* 4.1 Handle the problem of unprocessed successors --
   Since the algorithm runs in a rpo order, terminators of blocks with multiple successors will not be deal at once
 *)
 let update_multisucc_term (bl : VBlockLabel.t) =
@@ -397,6 +397,20 @@ let update_multisucc_term (bl : VBlockLabel.t) =
     vprog := VProg.update_block !vprog bl { block with term = new_term };
     ()
 
+(*  4.2 Handle the problem of unprocessed predecessors --
+  Blocks with no successor (like exit block) will not be deal at once too.
+*)
+let update_nonesucc_term (bl : VBlockLabel.t) =
+  let block = VProg.get_block !vprog bl in
+  let binfo = get_allocinfo bl in
+  if List.length (VBlock.get_successors block) = 0 then (
+    let reg_map = binfo.exit_map in
+    let convert_term term = Term.term_map_reg term (fun slot -> SlotMap.find_exn reg_map slot) in
+    let new_term = convert_term block.term in
+    vprog := VProg.update_block !vprog bl { block with term = new_term }
+  );
+  ()
+
 (* Main function: used to handle the entire program *)
 (* TODO : currently no FP support *)
 let alloc_func (f_label : VFuncLabel.t) (func : VFunc.t) =
@@ -404,12 +418,30 @@ let alloc_func (f_label : VFuncLabel.t) (func : VFunc.t) =
   List.iter alloc_block rpo_func;
 
   List.iter update_multisucc_term rpo_func;
+
+  let out = Printf.sprintf "%s-allocatinfo.txt" !Driver_config.Linkcore_Opt.output_file in
+  Basic_io.write out (VBlockMap.fold !alloc_env "" (fun bl info acc ->
+    let entry_str = SlotMap.fold info.entry_map "" (fun var reg acc -> acc ^ (Slot.to_string var) ^ "->" ^ (Slot.to_string reg) ^ "; ") in
+    let exit_str = SlotMap.fold info.exit_map "" (fun var reg acc -> acc ^ (Slot.to_string var) ^ "->" ^ (Slot.to_string reg) ^ "; ") in
+    acc ^ Printf.sprintf "Block %s:\n Entry: %s\n Exit: %s\n" bl.name entry_str exit_str
+  ));
+
+  List.iter update_nonesucc_term rpo_func;
   ()
 
 let reg_alloc (vprog_arg: VProg.t) =
   rpo := RPO.calculate_rpo vprog_arg;
   (* A. Spill pass. Decide which registers to spill *)
   Spill.spill_regs vprog_arg !rpo;
+
+  let out = Printf.sprintf "%s-spillinfo.txt" !Driver_config.Linkcore_Opt.output_file in
+  Basic_io.write out (VBlockMap.fold !Riscv_reg_spill.spill_env "" (fun bl info acc ->
+    let entryW_str = SlotSet.fold info.entryW "" (fun var acc -> acc ^ (Slot.to_string var) ^ "; ") in
+    let entryS_str = SlotSet.fold info.entryS "" (fun var acc -> acc ^ (Slot.to_string var) ^ "; ") in
+    let exitW_str = SlotSet.fold info.exitW "" (fun var acc -> acc ^ (Slot.to_string var) ^ "; ") in
+    let exitS_str = SlotSet.fold info.exitS "" (fun var acc -> acc ^ (Slot.to_string var) ^ "; ") in
+    acc ^ Printf.sprintf "Block %s:\n EntryW: %s\n EntryS: %s\n ExitW: %s\n ExitS: %s\n" bl.name entryW_str entryS_str exitW_str exitS_str
+  ));
 
   vprog := vprog_arg;
 
@@ -421,5 +453,6 @@ let reg_alloc (vprog_arg: VProg.t) =
   let out = Printf.sprintf "%s-allocated.vasm" !Driver_config.Linkcore_Opt.output_file in
   Basic_io.write out (VProg.to_string !vprog);
 
+  
   (* TODO : Optimization *)
   !vprog

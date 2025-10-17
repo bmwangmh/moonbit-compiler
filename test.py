@@ -23,6 +23,7 @@ parser.add_argument("-b", "--build", action="store_true", help="rebuild compiler
 parser.add_argument("-v", "--verbose", action="store_true", help="on rebuild, makes interpreter output detailed values")
 parser.add_argument("-c", "--compile-only", action="store_true", help="compile without executing tests")
 parser.add_argument("-t", "--test", type=str, help="execute this test case only")
+parser.add_argument("-a", "--assembly", action="store_true", help="produce assembly output")
 parser.add_argument("--gcc", action="store_true", help="use gcc instead of clang++")
 
 args = parser.parse_args()
@@ -106,6 +107,18 @@ with DirContext("test"):
                 print("Passed.")
             else:
                 print("Failed.")
+                success = False
+
+        if args.assembly:
+            os.system(f"mv build/{src}/{src} build/{src}/{src}.s")
+            os.system(f"riscv64-linux-gnu-gcc -g build/{src}/{src}.s -o build/{src}/{src} -static")
+            os.system(f"/usr/bin/qemu-riscv64 ./build/{src}/{src} > build/{src}/asm_output.txt 2> build/{src}/asm_debug.txt")
+            asm_diff = os.system(f"diff build/{src}/asm_output.txt src/{src}/{src}.ans")
+            
+            if asm_diff == 0:
+                print("Assembly Passed.")
+            else:
+                print("Assembly Failed.")
                 success = False
 
 exit(not success)
