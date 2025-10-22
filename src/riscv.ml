@@ -254,7 +254,7 @@ let jtype_to_string = function
 
 
 let symbol_mangling = String.map (function
-  | '@' | '#' | '|' | '/' | ':' | '(' | ')' | '*' -> '_'
+  | '@' | '#' | '|' | '/' | ':' | '(' | ')' | '*' | '<' | '>' -> '_'
   | c -> c
 )
 
